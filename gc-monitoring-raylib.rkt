@@ -22,6 +22,11 @@
 (define gc-longest-pause (make-parameter 0.0))
 (define previous-time (make-parameter (current-inexact-milliseconds)))
 
+;; Add stabilization period parameters
+(define start-time (make-parameter (current-inexact-milliseconds)))
+(define stabilization-period (make-parameter 3.0)) ;; 3 seconds before starting to measure
+(define monitoring-active (make-parameter #f))
+
 ;; Animation parameters
 (define rotation (make-parameter 0.0))
 (define circles (make-parameter '()))
@@ -59,8 +64,16 @@
   (vector-set! frame-times frame-index delta-time)
   (set! frame-index (modulo (add1 frame-index) (vector-length frame-times)))
   
-  ;; Check for long frame times that might indicate GC pauses
-  (when (> delta-time gc-pause-threshold)
+  ;; Check if we should start monitoring (after stabilization period)
+  (when (and (not (monitoring-active))
+             (> (- current-time (start-time)) (* (stabilization-period) 1000)))
+    (monitoring-active #t)
+    ;; Reset metrics upon starting actual monitoring
+    (gc-pause-count 0)
+    (gc-longest-pause 0.0))
+  
+  ;; Check for long frame times that might indicate GC pauses (only if monitoring is active)
+  (when (and (monitoring-active) (> delta-time gc-pause-threshold))
     (gc-pause-count (add1 (gc-pause-count)))
     (when (> delta-time (gc-longest-pause))
       (gc-longest-pause delta-time)))
@@ -110,6 +123,9 @@
   ;; Initialize circles
   (initialize-circles)
   
+  ;; Initialize monitoring time
+  (start-time (current-inexact-milliseconds))
+  
   (let loop ()
     (when (not (WindowShouldClose))
       ;; Calculate delta time
@@ -138,7 +154,9 @@
         (gc-pause-count 0)
         (gc-longest-pause 0.0)
         (objects-created 0)
-        (objects-list '()))
+        (objects-list '())
+        (start-time (current-inexact-milliseconds))
+        (monitoring-active #f))
       
       ;; Create memory stress
       (create-memory-stress)
@@ -177,8 +195,16 @@
       (DrawText (~a "FPS: " (GetFPS)) 20 50 20 BLACK)
       (DrawText (~a "Max Frame Time: " (~r (* 1000 (max-frame-time)) #:precision 2) " ms") 20 80 20 BLACK)
       
-      (define gc-color (if (> (gc-pause-count) 0) RED BLACK))
-      (DrawText (~a "GC Pauses Detected: " (gc-pause-count)) 20 110 20 gc-color)
+      (define stabilizing-text (if (monitoring-active) 
+                                  ""
+                                  (~a " (Stabilizing: " 
+                                       (~r (- (stabilization-period) 
+                                              (/ (- (current-inexact-milliseconds) (start-time)) 1000))
+                                          #:precision 1) 
+                                       "s remaining)")))
+      
+      (define gc-color (if (and (monitoring-active) (> (gc-pause-count) 0)) RED BLACK))
+      (DrawText (~a "GC Pauses Detected: " (gc-pause-count) stabilizing-text) 20 110 20 gc-color)
       (DrawText (~a "Longest Pause: " (~r (* 1000 (gc-longest-pause)) #:precision 2) " ms") 20 140 20 gc-color)
       
       (DrawText (~a "Memory Stress: " 
