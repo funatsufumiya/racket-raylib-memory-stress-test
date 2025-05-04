@@ -1,4 +1,4 @@
-# Racket Raylib GC Check (Memory Stress Test)
+# Racket Raylib Memory Stress Test (for checking GC stop-the-world pauses)
 
 ![screenshot](screenshot.png)
 
