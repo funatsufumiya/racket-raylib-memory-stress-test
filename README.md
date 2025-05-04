@@ -42,4 +42,4 @@ Both implementations successfully managed large temporary allocations (~76MB) wi
 
 ## Acknowledgement
 
-This project, including both the code and documentation (English), was developed with the assistance of an AI coding assistant (Cody).
+This project, including both the code and documentation (including English translation), was developed with the assistance of an AI coding assistant (Cody).
