@@ -16,6 +16,15 @@ $ raco pkg install --auto raylib
 $ racket gc-monitoring-raylib.rkt
 ``` 
 
+## Rust code for comparison
+
+You can run nearly the same code in Rust version:
+
+```bash
+$ cd rust
+$ cargo run
+```
+
 ## Appendix: Memory Consumption Benchmark (Racket vs SBCL)
 
 This appendix compares memory usage patterns between Racket and SBCL (Common Lisp) using both computational (tak function) and memory-intensive allocation tests.
