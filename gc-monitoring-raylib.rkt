@@ -20,6 +20,7 @@
 (define gc-pause-threshold 0.020)           ;; Consider pauses over 20ms as GC
 (define gc-pause-count (make-parameter 0))
 (define gc-longest-pause (make-parameter 0.0))
+(define gc-pause-times (make-parameter '()))  ;; List to store all GC pause times
 (define previous-time (make-parameter (current-inexact-milliseconds)))
 
 ;; Add stabilization period parameters
@@ -41,6 +42,18 @@
 ;; Stress level settings
 (define stress-objects-per-level
   (vector 100 1000 10000))  ;; Objects per frame at each stress level
+
+;; Function to calculate the median of a list of numbers
+(define (median lst)
+  (when (empty? lst)
+    (error "Cannot calculate median of empty list"))
+  (define sorted (sort lst <))
+  (define len (length sorted))
+  (if (odd? len)
+      (list-ref sorted (quotient len 2))
+      (/ (+ (list-ref sorted (quotient len 2))
+            (list-ref sorted (- (quotient len 2) 1)))
+         2.0)))
 
 ;; Function to create memory stress
 (define (create-memory-stress)
@@ -70,11 +83,13 @@
     (monitoring-active #t)
     ;; Reset metrics upon starting actual monitoring
     (gc-pause-count 0)
-    (gc-longest-pause 0.0))
+    (gc-longest-pause 0.0)
+    (gc-pause-times '()))
   
   ;; Check for long frame times that might indicate GC pauses (only if monitoring is active)
   (when (and (monitoring-active) (> delta-time gc-pause-threshold))
     (gc-pause-count (add1 (gc-pause-count)))
+    (gc-pause-times (cons delta-time (gc-pause-times)))  ;; Record the pause time
     (when (> delta-time (gc-longest-pause))
       (gc-longest-pause delta-time)))
   
@@ -153,6 +168,7 @@
       (when (IsKeyPressed KEY_R)
         (gc-pause-count 0)
         (gc-longest-pause 0.0)
+        (gc-pause-times '())
         (objects-created 0)
         (objects-list '())
         (start-time (current-inexact-milliseconds))
@@ -207,14 +223,21 @@
       (DrawText (~a "GC Pauses Detected: " (gc-pause-count) stabilizing-text) 20 110 20 gc-color)
       (DrawText (~a "Longest Pause: " (~r (* 1000 (gc-longest-pause)) #:precision 2) " ms") 20 140 20 gc-color)
       
+      ;; Calculate and display median pause time
+      (define median-pause-text
+        (if (and (monitoring-active) (> (length (gc-pause-times)) 0))
+            (~a "Median Pause: " (~r (* 1000 (median (gc-pause-times))) #:precision 2) " ms")
+            "Median Pause: N/A"))
+      (DrawText median-pause-text 20 170 20 gc-color)
+      
       (DrawText (~a "Memory Stress: " 
                     (if (stress-enabled) 
                         (~a "ON (Level " (stress-level) ")")
                         "OFF"))
-                20 180 20 
+                20 210 20 
                 (if (stress-enabled) RED GREEN))
-      (DrawText (~a "Objects Created: " (objects-created)) 20 210 20 BLACK)
-      (DrawText (~a "Objects Retained: " (length (objects-list))) 20 240 20 BLACK)
+      (DrawText (~a "Objects Created: " (objects-created)) 20 240 20 BLACK)
+      (DrawText (~a "Objects Retained: " (length (objects-list))) 20 270 20 BLACK)
       
       ;; Help instructions
       (DrawText "Instructions:" 20 340 20 DARKGRAY)
