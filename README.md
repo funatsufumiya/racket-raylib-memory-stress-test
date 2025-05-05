@@ -4,6 +4,8 @@
 
 NOTE: Why using raylib is just to visualize (and experience it in realtime) the stop-the-world. Not intended specific test for raylib, just for general memory stress test and GC stop-the-world confirmation on Racket-lang.
 
+WARNING: Previously, output had estimated GC stats, but it was incorrect values ([Issue #1](https://github.com/funatsufumiya/racket-raylib-memory-stress-test/issues/1)). So now it was removed. Please check memory consumption and lag by your own eyes.
+
 ## Prerequisites
 
 ```bash
