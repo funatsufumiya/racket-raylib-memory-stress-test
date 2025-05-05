@@ -7,7 +7,7 @@ NOTE: Why using raylib is just to visualize (and experience it in realtime) the 
 ## Prerequisites
 
 ```bash
-$ raco pkg install --auto raylib
+$ raco pkg install raylib
 ```
 
 ## Usage

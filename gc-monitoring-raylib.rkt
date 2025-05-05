@@ -6,22 +6,36 @@
          racket/fixnum
          racket/list
          racket/math
-         racket/match)
+         racket/match
+         "my-gcstats.rkt")  ;; Use our custom GC statistics module
+
+;; Enable GC statistics collection
+(gcstats-enable!)
 
 ;; Function to get memory usage
 (define (get-memory-usage)
   (/ (current-memory-use) (* 1024 1024.0)))
 
-;; Initialize GC metrics - use parameters for mutable state
+;; Function to get GC statistics
+(define (get-gc-stats)
+  (define stats (gcstats))
+  (define num-collections (vector-ref stats 0))
+  (define total-gc-time-ms (vector-ref stats 1))
+  (define max-gc-time-ms (vector-ref stats 2))
+  (define last-gc-time-ms (vector-ref stats 3))
+  (values num-collections total-gc-time-ms max-gc-time-ms last-gc-time-ms))
+
+;; Initialize metrics - use parameters for mutable state
 (define frame-times (make-vector 120 0.0))  ;; Store recent frame times
 (define frame-index 0)
 (define max-frame-time (make-parameter 0.0))  ;; Parameter for max frame time
 (define last-max-reset-time (make-parameter 0.0))
-(define gc-pause-threshold 0.020)           ;; Consider pauses over 20ms as GC
-(define gc-pause-count (make-parameter 0))
-(define gc-longest-pause (make-parameter 0.0))
-(define gc-pause-times (make-parameter '()))  ;; List to store all GC pause times
 (define previous-time (make-parameter (current-inexact-milliseconds)))
+
+;; Add processing time tracking parameters
+(define processing-start-time (make-parameter 0.0))
+(define last-processing-time (make-parameter 0.0))
+(define measuring-processing (make-parameter #f))
 
 ;; Add stabilization period parameters
 (define start-time (make-parameter (current-inexact-milliseconds)))
@@ -55,6 +69,22 @@
             (list-ref sorted (- (quotient len 2) 1)))
          2.0)))
 
+;; Functions to measure processing time
+(define (start-processing-measurement)
+  (processing-start-time (current-inexact-milliseconds))
+  (measuring-processing #t))
+
+(define (end-processing-measurement)
+  (when (measuring-processing)
+    (last-processing-time (- (current-inexact-milliseconds) (processing-start-time)))
+    (measuring-processing #f)))
+
+;; Explicitly request a garbage collection and measure pause time
+(define (measure-gc-pause)
+  (when (IsKeyPressed KEY_M)
+    (printf "Manually triggering garbage collection...\n")
+    (collect-garbage)))
+
 ;; Function to create memory stress
 (define (create-memory-stress)
   (when (stress-enabled)
@@ -67,40 +97,33 @@
     (when (> (length (objects-list)) objects-retained)
       (objects-list (take (objects-list) objects-retained)))))
 
-;; Measure frame time and detect GC pauses
-(define (update-frame-metrics)
+;; Update frame metrics
+(define (update-frame-metrics delta-time)
   (define current-time (current-inexact-milliseconds))
-  (define delta-time (/ (- current-time (previous-time)) 1000.0))  ;; Convert to seconds
+  (define raw-delta-time (/ (- current-time (previous-time)) 1000.0))  ;; Convert to seconds
   (previous-time current-time)
   
   ;; Record frame time
-  (vector-set! frame-times frame-index delta-time)
+  (vector-set! frame-times frame-index raw-delta-time)
   (set! frame-index (modulo (add1 frame-index) (vector-length frame-times)))
   
   ;; Check if we should start monitoring (after stabilization period)
   (when (and (not (monitoring-active))
              (> (- current-time (start-time)) (* (stabilization-period) 1000)))
     (monitoring-active #t)
-    ;; Reset metrics upon starting actual monitoring
-    (gc-pause-count 0)
-    (gc-longest-pause 0.0)
-    (gc-pause-times '()))
-  
-  ;; Check for long frame times that might indicate GC pauses (only if monitoring is active)
-  (when (and (monitoring-active) (> delta-time gc-pause-threshold))
-    (gc-pause-count (add1 (gc-pause-count)))
-    (gc-pause-times (cons delta-time (gc-pause-times)))  ;; Record the pause time
-    (when (> delta-time (gc-longest-pause))
-      (gc-longest-pause delta-time)))
+    (printf "Monitoring activated after stabilization period\n"))
   
   ;; Update maximum frame time
-  (when (> delta-time (max-frame-time))
-    (max-frame-time delta-time))
+  (when (> raw-delta-time (max-frame-time))
+    (max-frame-time raw-delta-time))
   
   ;; Reset maximum frame time every 5 seconds
   (when (> (- (/ current-time 1000.0) (last-max-reset-time)) 5.0)
     (last-max-reset-time (/ current-time 1000.0))
-    (max-frame-time 0.0)))
+    (max-frame-time 0.0))
+    
+  ;; Return the raw delta time for animation
+  delta-time)
 
 ;; Update animations
 (define (update-animations delta-time)
@@ -147,35 +170,47 @@
       (define delta-time (GetFrameTime))
       
       ;; Update metrics
-      (update-frame-metrics)
+      (define animation-delta (update-frame-metrics delta-time))
+      
+      ;; Start measuring processing time
+      (start-processing-measurement)
       
       ;; Update animations
-      (update-animations delta-time)
+      (update-animations animation-delta)
       
       ;; Memory stress test (toggle with G key)
       (when (IsKeyPressed KEY_G)
-        (stress-enabled (not (stress-enabled))))
+        (stress-enabled (not (stress-enabled)))
+        (printf "Memory stress test: ~a\n" (if (stress-enabled) "ON" "OFF")))
       
       ;; Change stress level with 1, 2, 3 keys
       (when (IsKeyPressed KEY_ONE)
-        (stress-level 1))
+        (stress-level 1)
+        (printf "Stress level set to 1 (low)\n"))
       (when (IsKeyPressed KEY_TWO)
-        (stress-level 2))
+        (stress-level 2)
+        (printf "Stress level set to 2 (medium)\n"))
       (when (IsKeyPressed KEY_THREE)
-        (stress-level 3))
+        (stress-level 3)
+        (printf "Stress level set to 3 (high)\n"))
       
       ;; Reset metrics with R key
       (when (IsKeyPressed KEY_R)
-        (gc-pause-count 0)
-        (gc-longest-pause 0.0)
-        (gc-pause-times '())
+        (gcstats-reset!)  ;; Reset GC statistics
         (objects-created 0)
         (objects-list '())
         (start-time (current-inexact-milliseconds))
-        (monitoring-active #f))
+        (monitoring-active #f)
+        (printf "Metrics reset\n"))
+      
+      ;; Measure explicit GC pause (M key)
+      (measure-gc-pause)
       
       ;; Create memory stress
       (create-memory-stress)
+      
+      ;; End measuring processing time
+      (end-processing-measurement)
       
       ;; Draw screen
       (BeginDrawing)
@@ -207,44 +242,53 @@
       ;; Display memory and GC information
       (define current-memory (get-memory-usage))
       
+      ;; Get GC statistics from our custom module
+      (define-values (num-collections total-gc-time max-gc-time last-gc-time) 
+        (get-gc-stats))
+      
       (DrawText (~a "Memory Usage: " (~r current-memory #:precision 2) " MB") 20 20 20 BLACK)
       (DrawText (~a "FPS: " (GetFPS)) 20 50 20 BLACK)
       (DrawText (~a "Max Frame Time: " (~r (* 1000 (max-frame-time)) #:precision 2) " ms") 20 80 20 BLACK)
+      (DrawText (~a "Last Processing Time: " (~r (last-processing-time) #:precision 2) " ms") 20 110 20 DARKBLUE)
       
-      (define stabilizing-text (if (monitoring-active) 
-                                  ""
-                                  (~a " (Stabilizing: " 
-                                       (~r (- (stabilization-period) 
-                                              (/ (- (current-inexact-milliseconds) (start-time)) 1000))
-                                          #:precision 1) 
-                                       "s remaining)")))
+      ;; Display GC statistics
+      (define gc-color (if (> max-gc-time 20.0) RED PURPLE))
+      (DrawText (~a "GC Collections: " num-collections) 20 140 20 PURPLE)
+      (DrawText (~a "Total GC Time: " (~r total-gc-time #:precision 2) " ms") 20 170 20 PURPLE)
+      (DrawText (~a "Max GC Pause: " (~r max-gc-time #:precision 2) " ms") 20 200 20 gc-color)
+      (DrawText (~a "Last GC Pause: " (~r last-gc-time #:precision 2) " ms") 20 230 20 PURPLE)
       
-      (define gc-color (if (and (monitoring-active) (> (gc-pause-count) 0)) RED BLACK))
-      (DrawText (~a "GC Pauses Detected: " (gc-pause-count) stabilizing-text) 20 110 20 gc-color)
-      (DrawText (~a "Longest Pause: " (~r (* 1000 (gc-longest-pause)) #:precision 2) " ms") 20 140 20 gc-color)
+      (define stabilizing-text 
+        (if (monitoring-active) 
+            ""
+            (~a " (Stabilizing: " 
+                 (~r (- (stabilization-period) 
+                        (/ (- (current-inexact-milliseconds) (start-time)) 1000))
+                    #:precision 1) 
+                 "s remaining)")))
       
-      ;; Calculate and display median pause time
-      (define median-pause-text
-        (if (and (monitoring-active) (> (length (gc-pause-times)) 0))
-            (~a "Median Pause: " (~r (* 1000 (median (gc-pause-times))) #:precision 2) " ms")
-            "Median Pause: N/A"))
-      (DrawText median-pause-text 20 170 20 gc-color)
+      (DrawText (~a "Monitoring Status: " 
+                    (if (monitoring-active) "ACTIVE" "STABILIZING") 
+                    stabilizing-text) 
+                20 260 20 
+                (if (monitoring-active) GREEN ORANGE))
       
       (DrawText (~a "Memory Stress: " 
-                    (if (stress-enabled) 
-                        (~a "ON (Level " (stress-level) ")")
-                        "OFF"))
-                20 210 20 
+              (if (stress-enabled) 
+                  (~a "ON (Level " (stress-level) ")")
+                  "OFF"))
+                20 290 20 
                 (if (stress-enabled) RED GREEN))
-      (DrawText (~a "Objects Created: " (objects-created)) 20 240 20 BLACK)
-      (DrawText (~a "Objects Retained: " (length (objects-list))) 20 270 20 BLACK)
+      (DrawText (~a "Objects Created: " (objects-created)) 20 320 20 BLACK)
+      (DrawText (~a "Objects Retained: " (length (objects-list))) 20 350 20 BLACK)
       
       ;; Help instructions
-      (DrawText "Instructions:" 20 340 20 DARKGRAY)
-      (DrawText "- G: Toggle memory stress test" 40 370 18 DARKGRAY)
-      (DrawText "- 1/2/3: Select stress level (low/medium/high)" 40 400 18 DARKGRAY)
-      (DrawText "- R: Reset metrics" 40 430 18 DARKGRAY)
-      (DrawText "- ESC: Exit" 40 460 18 DARKGRAY)
+      (DrawText "Instructions:" 20 390 20 DARKGRAY)
+      (DrawText "- G: Toggle memory stress test" 40 420 18 DARKGRAY)
+      (DrawText "- 1/2/3: Select stress level (low/medium/high)" 40 450 18 DARKGRAY)
+      (DrawText "- M: Force garbage collection" 40 480 18 DARKGRAY)
+      (DrawText "- R: Reset metrics" 40 510 18 DARKGRAY)
+      (DrawText "- ESC: Exit" 40 540 18 DARKGRAY)
       
       (EndDrawing)
       (loop)))
