@@ -23,6 +23,9 @@ You can run nearly the same code in Rust version:
 ```bash
 $ cd rust
 $ cargo run
+
+# Recommend to clean the project after run. Because intermediate files will be GBs class size.
+$ cargo clean
 ```
 
 ## Appendix: Memory Consumption Benchmark (Racket vs SBCL)
