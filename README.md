@@ -23,7 +23,7 @@ $ racket memory-stress-test-raylib.rkt
 You can run nearly the same code in Rust version:
 
 ```bash
-$ cd rust
+$ cd rust-memory-stress-test
 $ cargo run
 
 # Recommend: clean the project after run. 
@@ -31,7 +31,25 @@ $ cargo run
 $ cargo clean
 ```
 
-## Appendix: Memory Consumption Benchmark (Racket vs SBCL)
+## Appendix1: Object Stress Test
+
+![screenshot2](screenshot2.png)
+
+This is for checking how many objects can be visualized in realtime in Raylib.
+
+```bash
+$ racket object-stress-test-raylib.rkt
+```
+
+### Rust version
+
+```bash
+$ cd rust-object-stress-test
+$ cargo run
+$ cargo clean
+```
+
+## Appendix2: Memory Consumption Benchmark (Racket vs SBCL)
 
 This appendix compares memory usage patterns between Racket and SBCL (Common Lisp) using both computational (tak function) and memory-intensive allocation tests.
 
