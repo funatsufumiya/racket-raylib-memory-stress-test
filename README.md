@@ -2,6 +2,8 @@
 
 ![screenshot](screenshot.png)
 
+NOTE: Why using raylib is just to visualize the stop-the-world. Not intended specific test for raylib, just for general memory stress test and GC stop-the-world confirmation on Racket-lang.
+
 ## Prerequisites
 
 ```bash
