@@ -31,6 +31,8 @@ $ cargo run
 $ cargo clean
 ```
 
+(Visual result was almost the same between Racket and Rust, in my environment M1 MacBook Air.)
+
 ## Appendix1: Object Stress Test
 
 ![screenshot2](screenshot2.png)
@@ -48,6 +50,8 @@ $ cd rust-object-stress-test
 $ cargo run
 $ cargo clean
 ```
+
+(Stress result was almost the same between Racket and Rust, in my environment M1 MacBook Air.)
 
 ## Appendix2: Memory Consumption Benchmark (Racket vs SBCL)
 
