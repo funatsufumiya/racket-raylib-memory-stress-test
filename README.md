@@ -13,7 +13,7 @@ $ raco pkg install raylib
 ## Usage
 
 ```bash
-$ racket gc-monitoring-raylib.rkt
+$ racket memory-stress-test-raylib.rkt
 ``` 
 
 ## Rust code for comparison
